@@ -1,0 +1,17 @@
+[package]
+name = "kspy-ebpf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kspy-common = { path = "../kspy-common" }
+
+aya-ebpf = { workspace = true }
+aya-log-ebpf = { workspace = true }
+
+[build-dependencies]
+which = { workspace = true }
+
+[[bin]]
+name = "kspy"
+path = "src/main.rs"
