@@ -1,20 +1,24 @@
 #![no_std]
 #![no_main]
 
-use aya_ebpf::{macros::kprobe, programs::ProbeContext};
-use aya_log_ebpf::info;
+mod common;
+mod hook;
 
-#[kprobe]
-pub fn kspy(ctx: ProbeContext) -> u32 {
-    match try_kspy(ctx) {
-        Ok(ret) => ret,
-        Err(ret) => ret,
-    }
-}
-
-fn try_kspy(ctx: ProbeContext) -> Result<u32, u32> {
-    info!(&ctx, "vfs write called");
-    Ok(0)
+// aya-tool generate file > vmlinux.rs
+// replace `gen` -> `gen_`
+#[allow(
+    clippy::all,
+    non_camel_case_types,
+    non_upper_case_globals,
+    non_snake_case,
+    dead_code,
+    missing_docs,
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::unnecessary_transmute
+)]
+mod bindgen {
+    include!("vmlinux.rs");
 }
 
 #[cfg(not(test))]
