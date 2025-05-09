@@ -6,7 +6,7 @@ pub use aya_ebpf::{
     maps::LruHashMap,
     programs::ProbeContext,
 };
-pub use aya_log_ebpf::info;
+pub use aya_log_ebpf::{debug, error, info};
 pub use kspy_common::MAX_PATH_LEN;
 #[repr(C)]
 pub struct WriteEvent {

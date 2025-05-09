@@ -17,6 +17,7 @@ mod hook;
     clippy::type_complexity,
     clippy::unnecessary_transmute
 )]
+#[rustfmt::skip]
 mod bindgen {
     include!("vmlinux.rs");
 }
