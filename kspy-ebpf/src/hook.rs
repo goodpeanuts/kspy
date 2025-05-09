@@ -8,7 +8,9 @@ use crate::{
 #[kprobe]
 pub fn hook_vfs_write(ctx: ProbeContext) -> u32 {
     match { try_vfs_write(&ctx) } {
-        Ok(_) => 0,
+        Ok(_) => {
+            0
+        },
         Err(i) => {
             error!(&ctx, "Error: {}", i);
             i as u32
@@ -22,7 +24,7 @@ const INIT_ENENT: WriteEvent = WriteEvent {
     count: 0,
 };
 
-// 参数：struct file *file, const char __user *buf, size_t count, loff_t *pos
+// params：struct file *file, const char __user *buf, size_t count, loff_t *pos
 fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
     let file_addr = ctx.arg::<u64>(0).ok_or(-5)?;
     let file_ptr = file_addr as *const file;
@@ -38,10 +40,10 @@ fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
         let dentry_ptr = file_val.f_path.dentry;
         let dentry_val = bpf_probe_read_kernel::<dentry>(dentry_ptr).map_err(|_| -9)?;
         let name_ptr = dentry_val.d_name.name;
-        bpf_probe_read_user_str_bytes(name_ptr, &mut event.path).map_err(|_| -10)?;
+        bpf_probe_read_kernel_str_bytes(name_ptr, &mut event.path).map_err(|_| -10)?;
     };
     let xfname = unsafe { from_utf8_unchecked(&event.path) };
-    info!(ctx, "vfs_write: file: {}", xfname);
-    info!(ctx, "vfs_write: file: {}", file_ptr as u64);
+    info!(ctx, "vfs_write: filename: {}", xfname);
+    // info!(ctx, "vfs_write: fileptr: {}", file_ptr as u64);
     Ok(())
 }
