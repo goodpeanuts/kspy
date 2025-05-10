@@ -1,7 +1,9 @@
+use anyhow::Context as _;
 use aya::{
-    maps::{perf::PerfBufferError, AsyncPerfEventArray, ProgramArray},
-    programs::KProbe,
+    maps::{perf::PerfBufferError, AsyncPerfEventArray},
+    programs::FEntry,
     util::online_cpus,
+    Btf,
 };
 use bytes::BytesMut;
 use kspy_common::WriteEvent;
@@ -36,22 +38,10 @@ async fn main() -> anyhow::Result<()> {
         // This can happen if you remove all log statements from your eBPF program.
         warn!("failed to initialize eBPF logger: {e}");
     }
-    let program: &mut KProbe = ebpf.program_mut("hook_vfs_write").unwrap().try_into()?;
-    program.load()?;
-    program.attach("vfs_write", 0)?;
-
-    let mut tail_call_map = ProgramArray::try_from(ebpf.take_map("JUMP_TABLE").unwrap())?;
-
-    let prg_list = ["push_hook_info"];
-
-    for (i, prg) in prg_list.iter().enumerate() {
-        {
-            let program: &mut KProbe = ebpf.program_mut(prg).unwrap().try_into()?;
-            program.load()?;
-            let fd = program.fd().unwrap();
-            tail_call_map.set(i as u32, fd, 0)?;
-        }
-    }
+    let btf = Btf::from_sys_fs().context("BTF from sysfs")?;
+    let program: &mut FEntry = ebpf.program_mut("hook_vfs_write").unwrap().try_into()?;
+    program.load("vfs_write", &btf)?;
+    program.attach()?;
 
     let mut perf_array = AsyncPerfEventArray::try_from(ebpf.take_map("PERF_ARRAY").unwrap())?;
 
