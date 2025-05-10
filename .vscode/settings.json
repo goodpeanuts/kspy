@@ -1,0 +1,9 @@
+{
+    "rust-analyzer.cargo.features": ["webshell-detect"],
+    "rust-analyzer.check.features": ["webshell-detect"],
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true,
+    "[toml]": {
+        "editor.defaultFormatter": "tamasfe.even-better-toml"
+    },
+}

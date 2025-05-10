@@ -1,5 +1,5 @@
 use aya::{
-    maps::{perf::PerfBufferError, AsyncPerfEventArray, HashMap},
+    maps::{perf::PerfBufferError, AsyncPerfEventArray},
     programs::KProbe,
     util::online_cpus,
 };
@@ -7,7 +7,15 @@ use bytes::BytesMut;
 use kspy_common::WriteEvent;
 #[rustfmt::skip]
 use log::{debug, warn, error, info};
-use kspy::file::find_path_by_inode;
+#[cfg(feature = "webshell-detect")]
+use std::sync::Arc;
+
+#[cfg(feature = "webshell-detect")]
+use kspy::client::{send_file, setup_connection};
+use kspy::{
+    file::find_path_by_inode,
+    filter::{filter_path, init_pid_filter},
+};
 use tokio::{signal, task};
 
 #[tokio::main]
@@ -41,30 +49,20 @@ async fn main() -> anyhow::Result<()> {
     program.load()?;
     program.attach("vfs_write", 0)?;
 
-    let pids: Vec<i32> = vec![];
-    let mut target_pids_map: HashMap<_, i32, u8> =
-        HashMap::try_from(ebpf.map_mut("TARGET_PIDS").unwrap())?;
-    if pids.is_empty() {
-        target_pids_map
-            .insert(&i32::MIN, 0, 0)
-            .map_err(|e| {
-                error!("target_pids_map insert -1 failed: {e}");
-                e
-            })?;
-    } else {
-        for pid in pids {
-            target_pids_map.insert(pid, 0, 0).map_err(|e| {
-                error!("insert {pid} failed: {e}");
-                e
-            })?;
-        }
-    }
+    init_pid_filter(&mut ebpf)?;
+
+    #[cfg(feature = "webshell-detect")]
+    let (tx, task_map) = setup_connection().await?;
 
     let mut perf_array = AsyncPerfEventArray::try_from(ebpf.take_map("PERF_VFS_WRITE").unwrap())?;
 
     for cpu_id in online_cpus().map_err(|(_, error)| error)? {
         // open a separate perf buffer for each cpu
         let mut buf = perf_array.open(cpu_id, None)?;
+        #[cfg(feature = "webshell-detect")]
+        let tx_clone = tx.clone();
+        #[cfg(feature = "webshell-detect")]
+        let task_map_clone = task_map.clone();
 
         // process each perf buffer in a separate task
         #[allow(unreachable_code)]
@@ -91,7 +89,23 @@ async fn main() -> anyhow::Result<()> {
                         let name = name.to_str().unwrap_or("invalid utf-8");
                         debug!("events: {:?}", name);
                         if let Some(path) = find_path_by_inode(pid, inode) {
-                            info!("events: path: {}", path);
+                            if filter_path(path.clone()) {
+                                info!("events: path: {}", path);
+                            } else {
+                                debug!("filter events path: {}", path);
+                                continue;
+                            }
+                            // 2. 打开文件发送信息
+                            #[cfg(feature = "webshell-detect")]
+                            if let Err(e) = send_file(
+                                path.clone(),
+                                tx_clone.clone(),
+                                Arc::clone(&task_map_clone),
+                            )
+                            .await
+                            {
+                                error!("Failed to send file: {}", e);
+                            }
                         } else {
                             error!("[!] events: {name} path not found");
                         }

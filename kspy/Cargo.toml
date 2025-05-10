@@ -12,17 +12,16 @@ anyhow = { workspace = true, default-features = true }
 aya = { workspace = true }
 aya-log = { workspace = true }
 bytes = { workspace = true }
+dashmap = { workspace = true }
 env_logger = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 nix = { workspace = true, features = ["ioctl"] }
-tokio = { workspace = true, features = [
-    "macros",
-    "rt",
-    "rt-multi-thread",
-    "net",
-    "signal",
-] }
+tokio = { workspace = true, features = ["full"] }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
 [build-dependencies]
 anyhow = { workspace = true }
 aya-build = { workspace = true }
@@ -43,3 +42,8 @@ kspy-ebpf = { path = "../kspy-ebpf" }
 [[bin]]
 name = "kspy"
 path = "src/main.rs"
+
+
+[features]
+default = []
+webshell-detect = []

@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "kspy",
     "kspy-common",
-    "kspy-ebpf",
+    "kspy-ebpf", "wbserver",
 ]
 default-members = ["kspy", "kspy-common"]
 
@@ -23,12 +23,18 @@ anyhow = { version = "1", default-features = false }
 # See https://github.com/clap-rs/clap/blob/61f5ee5/clap_builder/src/lib.rs#L15.
 bytes = "*"
 clap = { version = "4.5.20", default-features = false, features = ["std"] }
+dashmap = "=6.1.0"
 env_logger = { version = "0.11.5", default-features = false }
 libc = { version = "0.2.159", default-features = false }
 log = { version = "0.4.22", default-features = false }
 nix = "0.26"
 tokio = { version = "1.40.0", default-features = false }
 which = { version = "6.0.0", default-features = false }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 [profile.release.package.kspy-ebpf]
 debug = 2
