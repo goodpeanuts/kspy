@@ -32,6 +32,15 @@ static mut PERF_VFS_WRITE: PerfEventArray<WriteEvent> = PerfEventArray::new(0);
 
 // params：struct file *file, const char __user *buf, size_t count, loff_t *pos
 fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
+    let pid = bpf_get_current_pid_tgid() as i32;
+    unsafe {
+        // not trace all PIDs and current PID is not in the target PIDs
+        if TARGET_PIDS.get(&i32::MIN).is_none() && TARGET_PIDS.get(&pid).is_none() {
+            debug!(ctx, "PID {} not in target PIDs", pid);
+            return Ok(());
+        }
+    }
+
     let file_addr = ctx.arg::<u64>(0).ok_or(-5)?;
     let file_ptr = file_addr as *const file;
     WRITE_ENENTS
@@ -64,7 +73,7 @@ fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
         let inode_ptr = file_val.f_inode;
         let mnt_ptr = file_val.f_path.mnt;
         let inode_nr = bpf_probe_read_kernel(&(*inode_ptr).i_ino).map_err(|_| -9)?;
-        event.pid = bpf_get_current_pid_tgid() as u32;
+        event.pid = pid;
         event.inode = inode_nr;
         event.dentry = dentry_ptr as u64;
         event.mnt = mnt_ptr as u64;

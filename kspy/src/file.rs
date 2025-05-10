@@ -1,6 +1,6 @@
 use std::{fs, os::unix::fs::MetadataExt};
 
-pub fn find_path_by_inode(pid: u32, target_inode: u64) -> Option<String> {
+pub fn find_path_by_inode(pid: i32, target_inode: u64) -> Option<String> {
     let fd_path = format!("/proc/{}/fd", pid);
     let entries = fs::read_dir(&fd_path).ok()?;
 
