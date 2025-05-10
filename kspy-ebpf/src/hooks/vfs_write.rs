@@ -16,10 +16,19 @@ pub fn hook_vfs_write(ctx: ProbeContext) -> u32 {
 
 const INIT_ENENT: WriteEvent = WriteEvent {
     pid: 0,
-    path: ZEROED_ARRAY_1024,
+    inode: 0,
+    dentry: 0,
+    mnt: 0,
     count: 0,
     offset: 0,
+    filename: ZEROED_ARRAY_1024,
 };
+
+#[map]
+static WRITE_ENENTS: LruHashMap<u64, WriteEvent> = LruHashMap::with_max_entries(16, 0);
+
+#[map]
+static mut PERF_VFS_WRITE: PerfEventArray<WriteEvent> = PerfEventArray::new(0);
 
 // params：struct file *file, const char __user *buf, size_t count, loff_t *pos
 fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
@@ -50,11 +59,26 @@ fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
             return Ok(()); // 跳过非普通文件
         }
 
-        bpf_probe_read_kernel_str_bytes(name_ptr, &mut event.path).map_err(|_| -10)?;
+        bpf_probe_read_kernel_str_bytes(name_ptr, &mut event.filename).map_err(|_| -10)?;
+
+        let inode_ptr = file_val.f_inode;
+        let mnt_ptr = file_val.f_path.mnt;
+        let inode_nr = bpf_probe_read_kernel(&(*inode_ptr).i_ino).map_err(|_| -9)?;
+        event.pid = bpf_get_current_pid_tgid() as u32;
+        event.inode = inode_nr;
+        event.dentry = dentry_ptr as u64;
+        event.mnt = mnt_ptr as u64;
+        event.count = ctx.arg::<u64>(2).ok_or(-13)? as u64;
+        event.offset = ctx.arg::<u64>(3).ok_or(-14)? as u64;
     };
-    let xfname = unsafe { from_utf8_unchecked(&event.path) };
+
+    let xfname = unsafe { from_utf8_unchecked(&event.filename) };
     debug!(ctx, "vfs_write: filename: {}", xfname);
 
-    try_tail_call(ctx, 0);
+    #[allow(static_mut_refs)]
+    unsafe {
+        PERF_VFS_WRITE.output(ctx, &event, 0);
+    }
+
     Ok(())
 }

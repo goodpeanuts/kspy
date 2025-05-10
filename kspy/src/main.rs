@@ -1,12 +1,13 @@
 use aya::{
-    maps::{perf::PerfBufferError, AsyncPerfEventArray, ProgramArray},
+    maps::{perf::PerfBufferError, AsyncPerfEventArray},
     programs::KProbe,
     util::online_cpus,
 };
 use bytes::BytesMut;
 use kspy_common::WriteEvent;
 #[rustfmt::skip]
-use log::{debug, warn};
+use log::{debug, warn, error, info};
+use kspy::file::find_path_by_inode;
 use tokio::{signal, task};
 
 #[tokio::main]
@@ -40,20 +41,7 @@ async fn main() -> anyhow::Result<()> {
     program.load()?;
     program.attach("vfs_write", 0)?;
 
-    let mut tail_call_map = ProgramArray::try_from(ebpf.take_map("JUMP_TABLE").unwrap())?;
-
-    let prg_list = ["push_hook_info"];
-
-    for (i, prg) in prg_list.iter().enumerate() {
-        {
-            let program: &mut KProbe = ebpf.program_mut(prg).unwrap().try_into()?;
-            program.load()?;
-            let fd = program.fd().unwrap();
-            tail_call_map.set(i as u32, fd, 0)?;
-        }
-    }
-
-    let mut perf_array = AsyncPerfEventArray::try_from(ebpf.take_map("PERF_ARRAY").unwrap())?;
+    let mut perf_array = AsyncPerfEventArray::try_from(ebpf.take_map("PERF_VFS_WRITE").unwrap())?;
 
     for cpu_id in online_cpus().map_err(|(_, error)| error)? {
         // open a separate perf buffer for each cpu
@@ -72,17 +60,24 @@ async fn main() -> anyhow::Result<()> {
 
                 // events.read contains the number of events that have been read,
                 // and is always <= buffers.len()
-                for i in 0..events.read {
-                    let buf = &mut buffers[i];
+                for buf in buffers.iter_mut().take(events.read) {
+                    // let buf = &mut buffers[i];
                     // process buf
-                    let events = buf.as_ptr() as *const WriteEvent;
-                    let t = unsafe { *events };
-                    let name = std::ffi::CStr::from_bytes_until_nul(&t.path);
-                    if let Ok(name) = name {
+                    let event = buf.as_ptr() as *const WriteEvent;
+                    let t = unsafe { *event };
+                    let pid = t.pid;
+                    let inode = t.inode;
+                    let filename = std::ffi::CStr::from_bytes_until_nul(&t.filename);
+                    if let Ok(name) = filename {
                         let name = name.to_str().unwrap_or("invalid utf-8");
-                        println!("events: {:?}", name);
+                        debug!("events: {:?}", name);
+                        if let Some(path) = find_path_by_inode(pid, inode) {
+                            info!("events: path: {}", path);
+                        } else {
+                            error!("[!] events: {name} path not found");
+                        }
                     } else {
-                        println!("events: invalid utf-8");
+                        error!("events: invalid utf-8 in filename");
                     }
                 }
             }

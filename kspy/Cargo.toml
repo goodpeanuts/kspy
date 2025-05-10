@@ -15,6 +15,7 @@ bytes = { workspace = true }
 env_logger = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
+nix = { workspace = true, features = ["ioctl"] }
 tokio = { workspace = true, features = [
     "macros",
     "rt",
