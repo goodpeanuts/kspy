@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use aya::{
     maps::{perf::PerfBufferError, AsyncPerfEventArray, HashMap},
     programs::KProbe,
@@ -7,7 +9,10 @@ use bytes::BytesMut;
 use kspy_common::WriteEvent;
 #[rustfmt::skip]
 use log::{debug, warn, error, info};
-use kspy::file::find_path_by_inode;
+use kspy::{
+    client::{send_file, setup_connection},
+    file::find_path_by_inode,
+};
 use tokio::{signal, task};
 
 #[tokio::main]
@@ -45,12 +50,10 @@ async fn main() -> anyhow::Result<()> {
     let mut target_pids_map: HashMap<_, i32, u8> =
         HashMap::try_from(ebpf.map_mut("TARGET_PIDS").unwrap())?;
     if pids.is_empty() {
-        target_pids_map
-            .insert(&i32::MIN, 0, 0)
-            .map_err(|e| {
-                error!("target_pids_map insert -1 failed: {e}");
-                e
-            })?;
+        target_pids_map.insert(i32::MIN, 0, 0).map_err(|e| {
+            error!("target_pids_map insert -1 failed: {e}");
+            e
+        })?;
     } else {
         for pid in pids {
             target_pids_map.insert(pid, 0, 0).map_err(|e| {
@@ -60,11 +63,16 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    let (tx, task_map) = setup_connection().await?;
+    info!("Connected to server");
+
     let mut perf_array = AsyncPerfEventArray::try_from(ebpf.take_map("PERF_VFS_WRITE").unwrap())?;
 
     for cpu_id in online_cpus().map_err(|(_, error)| error)? {
         // open a separate perf buffer for each cpu
         let mut buf = perf_array.open(cpu_id, None)?;
+        let tx_clone = tx.clone();
+        let task_map_clone = task_map.clone();
 
         // process each perf buffer in a separate task
         #[allow(unreachable_code)]
@@ -92,6 +100,16 @@ async fn main() -> anyhow::Result<()> {
                         debug!("events: {:?}", name);
                         if let Some(path) = find_path_by_inode(pid, inode) {
                             info!("events: path: {}", path);
+                            // 2. 打开文件发送信息
+                            if let Err(e) = send_file(
+                                path.clone(),
+                                tx_clone.clone(),
+                                Arc::clone(&task_map_clone),
+                            )
+                            .await
+                            {
+                                error!("Failed to send file: {}", e);
+                            }
                         } else {
                             error!("[!] events: {name} path not found");
                         }
