@@ -1,7 +1,13 @@
-use aya::programs::KProbe;
+use aya::{
+    maps::{perf::PerfBufferError, AsyncPerfEventArray, ProgramArray},
+    programs::KProbe,
+    util::online_cpus,
+};
+use bytes::BytesMut;
+use kspy_common::WriteEvent;
 #[rustfmt::skip]
 use log::{debug, warn};
-use tokio::signal;
+use tokio::{signal, task};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,6 +39,57 @@ async fn main() -> anyhow::Result<()> {
     let program: &mut KProbe = ebpf.program_mut("hook_vfs_write").unwrap().try_into()?;
     program.load()?;
     program.attach("vfs_write", 0)?;
+
+    let mut tail_call_map = ProgramArray::try_from(ebpf.take_map("JUMP_TABLE").unwrap())?;
+
+    let prg_list = ["push_hook_info"];
+
+    for (i, prg) in prg_list.iter().enumerate() {
+        {
+            let program: &mut KProbe = ebpf.program_mut(prg).unwrap().try_into()?;
+            program.load()?;
+            let fd = program.fd().unwrap();
+            tail_call_map.set(i as u32, fd, 0)?;
+        }
+    }
+
+    let mut perf_array = AsyncPerfEventArray::try_from(ebpf.take_map("PERF_ARRAY").unwrap())?;
+
+    for cpu_id in online_cpus().map_err(|(_, error)| error)? {
+        // open a separate perf buffer for each cpu
+        let mut buf = perf_array.open(cpu_id, None)?;
+
+        // process each perf buffer in a separate task
+        #[allow(unreachable_code)]
+        task::spawn(async move {
+            let mut buffers = (0..10)
+                .map(|_| BytesMut::with_capacity(1024))
+                .collect::<Vec<_>>();
+
+            loop {
+                // wait for events
+                let events = buf.read_events(&mut buffers).await?;
+
+                // events.read contains the number of events that have been read,
+                // and is always <= buffers.len()
+                for i in 0..events.read {
+                    let buf = &mut buffers[i];
+                    // process buf
+                    let events = buf.as_ptr() as *const WriteEvent;
+                    let t = unsafe { *events };
+                    let name = std::ffi::CStr::from_bytes_until_nul(&t.path);
+                    if let Ok(name) = name {
+                        let name = name.to_str().unwrap_or("invalid utf-8");
+                        println!("events: {:?}", name);
+                    } else {
+                        println!("events: invalid utf-8");
+                    }
+                }
+            }
+
+            Ok::<_, PerfBufferError>(())
+        });
+    }
 
     let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");

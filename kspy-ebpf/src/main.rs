@@ -3,6 +3,7 @@
 
 mod common;
 mod hook;
+mod push_info;
 
 // aya-tool generate file > vmlinux.rs
 // replace `gen` -> `gen_`

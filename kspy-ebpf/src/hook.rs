@@ -1,16 +1,12 @@
-use aya_ebpf::helpers::bpf_probe_read_kernel;
-
 use crate::{
-    bindgen::{dentry, file, inode},
+    bindgen::{dentry, file},
     common::*,
 };
 
 #[kprobe]
 pub fn hook_vfs_write(ctx: ProbeContext) -> u32 {
     match { try_vfs_write(&ctx) } {
-        Ok(_) => {
-            0
-        },
+        Ok(_) => 0,
         Err(i) => {
             error!(&ctx, "Error: {}", i);
             i as u32
@@ -20,8 +16,9 @@ pub fn hook_vfs_write(ctx: ProbeContext) -> u32 {
 
 const INIT_ENENT: WriteEvent = WriteEvent {
     pid: 0,
-    path: ZEROED_ARRAY,
+    path: ZEROED_ARRAY_1024,
     count: 0,
+    offset: 0,
 };
 
 // params：struct file *file, const char __user *buf, size_t count, loff_t *pos
@@ -32,9 +29,7 @@ fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
         .insert(&file_addr, &INIT_ENENT, 0)
         .map_err(|_| -6)?;
     let event = unsafe { &mut *WRITE_ENENTS.get_ptr_mut(&file_addr).ok_or(-7)? };
-    let pid = bpf_get_current_pid_tgid() >> 32;
 
-    event.pid = pid;
     unsafe {
         let file_val = bpf_probe_read_kernel::<file>(file_ptr).map_err(|_| -8)?;
         let dentry_ptr = file_val.f_path.dentry;
@@ -43,7 +38,7 @@ fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
 
         let inode_ptr = file_val.f_inode;
         if inode_ptr.is_null() {
-            return Ok(());  // 没有 inode，跳过
+            return Ok(()); // 没有 inode，跳过
         }
 
         let i_mode = bpf_probe_read_kernel::<u16>(&((*inode_ptr).i_mode)).map_err(|_| -12)?;
@@ -52,12 +47,14 @@ fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
         const S_IFREG: u16 = 0o100000;
 
         if (i_mode & S_IFMT) != S_IFREG {
-            return Ok(());  // 跳过非普通文件
+            return Ok(()); // 跳过非普通文件
         }
 
         bpf_probe_read_kernel_str_bytes(name_ptr, &mut event.path).map_err(|_| -10)?;
     };
     let xfname = unsafe { from_utf8_unchecked(&event.path) };
     debug!(ctx, "vfs_write: filename: {}", xfname);
+
+    try_tail_call(ctx, 0);
     Ok(())
 }

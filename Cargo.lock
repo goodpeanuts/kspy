@@ -352,6 +352,7 @@ dependencies = [
  "aya",
  "aya-build",
  "aya-log",
+ "bytes",
  "env_logger",
  "kspy-common",
  "kspy-ebpf",
