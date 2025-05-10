@@ -15,7 +15,8 @@ mod hook;
     missing_docs,
     clippy::too_many_arguments,
     clippy::type_complexity,
-    clippy::unnecessary_transmute
+    clippy::unnecessary_transmute,
+    warnings
 )]
 #[rustfmt::skip]
 mod bindgen {
