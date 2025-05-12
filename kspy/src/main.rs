@@ -1,21 +1,18 @@
 use aya::{
-    maps::{perf::PerfBufferError, AsyncPerfEventArray},
+    maps::{perf::PerfBufferError, AsyncPerfEventArray, ProgramArray},
     programs::KProbe,
     util::online_cpus,
 };
 use bytes::BytesMut;
 use kspy_common::WriteEvent;
 #[rustfmt::skip]
+#[allow(unused_imports)]
 use log::{debug, warn, error, info};
 #[cfg(feature = "webshell-detect")]
 use std::sync::Arc;
 
 #[cfg(feature = "webshell-detect")]
 use kspy::client::{send_file, setup_connection};
-use kspy::{
-    file::find_path_by_inode,
-    filter::{filter_path, init_pid_filter},
-};
 use tokio::{signal, task};
 
 #[tokio::main]
@@ -49,7 +46,25 @@ async fn main() -> anyhow::Result<()> {
     program.load()?;
     program.attach("vfs_write", 0)?;
 
-    init_pid_filter(&mut ebpf)?;
+    let mut tail_call_map = ProgramArray::try_from(ebpf.take_map("JUMP_TABLE").unwrap())?;
+
+    let prg_list = ["hook_path_reso"];
+
+    for (i, prg) in prg_list.iter().enumerate() {
+        {
+            let program: &mut KProbe = ebpf.program_mut(prg).unwrap().try_into()?;
+            program.load()?;
+            let fd = program.fd().unwrap();
+            tail_call_map.set(i as u32, fd, 0)?;
+        }
+    }
+
+    // let btf = Btf::from_sys_fs().context("BTF from sysfs")?;
+    // let program: &mut FEntry = ebpf.program_mut("ff").unwrap().try_into()?;
+    // program.load("filp_close", &btf)?;
+    // program.attach()?;
+
+    // init_pid_filter(&mut ebpf)?;
 
     #[cfg(feature = "webshell-detect")]
     let (tx, task_map) = setup_connection().await?;
@@ -82,36 +97,18 @@ async fn main() -> anyhow::Result<()> {
                     // process buf
                     let event = buf.as_ptr() as *const WriteEvent;
                     let t = unsafe { *event };
-                    let pid = t.pid;
-                    let inode = t.inode;
-                    let filename = std::ffi::CStr::from_bytes_until_nul(&t.filename);
-                    if let Ok(name) = filename {
-                        let name = name.to_str().unwrap_or("invalid utf-8");
-                        debug!("events: {:?}", name);
-                        if let Some(path) = find_path_by_inode(pid, inode) {
-                            if filter_path(path.clone()) {
-                                info!("events: path: {}", path);
-                            } else {
-                                debug!("filter events path: {}", path);
-                                continue;
-                            }
-                            // 2. 打开文件发送信息
-                            #[cfg(feature = "webshell-detect")]
-                            if let Err(e) = send_file(
-                                path.clone(),
-                                tx_clone.clone(),
-                                Arc::clone(&task_map_clone),
-                            )
-                            .await
-                            {
-                                error!("Failed to send file: {}", e);
-                            }
-                        } else {
-                            error!("[!] events: {name} path not found");
-                        }
-                    } else {
-                        error!("events: invalid utf-8 in filename");
+
+                    let path = normalize_and_reverse_path(&t.path);
+
+                    // 2. 打开文件发送信息
+                    #[cfg(feature = "webshell-detect")]
+                    if let Err(e) =
+                        send_file(path.clone(), tx_clone.clone(), Arc::clone(&task_map_clone)).await
+                    {
+                        error!("Failed to send file: {}", e);
                     }
+
+                    info!("events: {:?}", path);
                 }
             }
 
@@ -125,4 +122,20 @@ async fn main() -> anyhow::Result<()> {
     println!("Exiting...");
 
     Ok(())
+}
+
+fn normalize_and_reverse_path(raw: &[u8]) -> String {
+    use std::str::from_utf8_unchecked;
+    let s = unsafe { from_utf8_unchecked(raw) }
+        .split('\0')
+        .next()
+        .unwrap_or("");
+
+    let s = s.trim_end_matches('/');
+
+    let components: Vec<&str> = s.split('/').filter(|part| !part.is_empty()).collect();
+
+    let reversed = components.into_iter().rev().collect::<Vec<_>>().join("/");
+
+    format!("/{}", reversed)
 }

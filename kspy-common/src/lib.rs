@@ -13,6 +13,7 @@ pub struct WriteEvent {
     pub count: u64,
     pub offset: u64,
     pub filename: [u8; MAX_PATH_LEN],
+    pub path: [u8; MAX_PATH_LEN],
 }
 
 #[repr(C)]

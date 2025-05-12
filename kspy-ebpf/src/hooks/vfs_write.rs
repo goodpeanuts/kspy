@@ -22,13 +22,8 @@ const INIT_ENENT: WriteEvent = WriteEvent {
     count: 0,
     offset: 0,
     filename: ZEROED_ARRAY_1024,
+    path: ZEROED_ARRAY_1024,
 };
-
-#[map]
-static WRITE_ENENTS: LruHashMap<u64, WriteEvent> = LruHashMap::with_max_entries(16, 0);
-
-#[map]
-static mut PERF_VFS_WRITE: PerfEventArray<WriteEvent> = PerfEventArray::new(0);
 
 // params：struct file *file, const char __user *buf, size_t count, loff_t *pos
 fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
@@ -82,12 +77,10 @@ fn try_vfs_write(ctx: &ProbeContext) -> Result<(), i64> {
     };
 
     let xfname = unsafe { from_utf8_unchecked(&event.filename) };
+
     debug!(ctx, "vfs_write: filename: {}", xfname);
 
-    #[allow(static_mut_refs)]
-    unsafe {
-        PERF_VFS_WRITE.output(ctx, &event, 0);
-    }
+    try_tail_call(ctx, 0);
 
     Ok(())
 }
