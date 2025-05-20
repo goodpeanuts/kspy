@@ -4,15 +4,13 @@ use aya::{
     util::online_cpus,
 };
 use bytes::BytesMut;
+use kspy::filter::{self, init_pid_filter};
 use kspy_common::WriteEvent;
 #[rustfmt::skip]
 #[allow(unused_imports)]
 use log::{debug, warn, error, info};
 #[cfg(feature = "webshell-detect")]
-use std::sync::Arc;
-
-#[cfg(feature = "webshell-detect")]
-use kspy::client::{send_file, setup_connection};
+use kspy::client::{send_request, setup_connection};
 use tokio::{signal, task};
 
 #[tokio::main]
@@ -66,19 +64,20 @@ async fn main() -> anyhow::Result<()> {
 
     // init_pid_filter(&mut ebpf)?;
 
+    init_pid_filter(&mut ebpf).map_err(|e| {
+        error!("init_pid_filter failed: {e}");
+        e
+    })?;
+
     #[cfg(feature = "webshell-detect")]
-    let (tx, task_map) = setup_connection().await?;
+    let client = setup_connection().await?;
 
     let mut perf_array = AsyncPerfEventArray::try_from(ebpf.take_map("PERF_VFS_WRITE").unwrap())?;
 
     for cpu_id in online_cpus().map_err(|(_, error)| error)? {
         // open a separate perf buffer for each cpu
         let mut buf = perf_array.open(cpu_id, None)?;
-        #[cfg(feature = "webshell-detect")]
-        let tx_clone = tx.clone();
-        #[cfg(feature = "webshell-detect")]
-        let task_map_clone = task_map.clone();
-
+        let client = client.clone();
         // process each perf buffer in a separate task
         #[allow(unreachable_code)]
         task::spawn(async move {
@@ -99,12 +98,13 @@ async fn main() -> anyhow::Result<()> {
                     let t = unsafe { *event };
 
                     let path = normalize_and_reverse_path(&t.path);
+                    if !filter::filter_path(path.clone()) {
+                        continue;
+                    }
 
                     // 2. 打开文件发送信息
                     #[cfg(feature = "webshell-detect")]
-                    if let Err(e) =
-                        send_file(path.clone(), tx_clone.clone(), Arc::clone(&task_map_clone)).await
-                    {
+                    if let Err(e) = send_request(path.clone(), &client).await {
                         error!("Failed to send file: {}", e);
                     }
 

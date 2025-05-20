@@ -1,5 +1,7 @@
 use aya::{maps::HashMap, Ebpf};
-use log::error;
+use log::{debug, error};
+
+static FILTER_PATH: [&str; 2] = ["/tmp/filp_close", "www"];
 
 pub fn init_pid_filter(ebpf: &mut Ebpf) -> anyhow::Result<()> {
     let pids: Vec<i32> = vec![];
@@ -22,7 +24,8 @@ pub fn init_pid_filter(ebpf: &mut Ebpf) -> anyhow::Result<()> {
 }
 
 pub fn filter_path(path: String) -> bool {
-    if path.contains("php_wbs") {
+    if FILTER_PATH.iter().any(|&p| path.contains(p)) {
+        debug!("filter_path: {}", path);
         return true;
     }
     false

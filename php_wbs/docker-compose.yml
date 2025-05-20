@@ -1,0 +1,12 @@
+version: '3'
+# mkdir -p www/uploads
+# chmod 777 www/uploads
+
+services:
+  php-apache:
+    image: php:7.4-apache
+    container_name: wbs_victim
+    ports:
+      - "8080:80"
+    volumes:
+      - ./www:/var/www/html
