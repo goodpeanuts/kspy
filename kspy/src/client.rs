@@ -33,11 +33,16 @@ pub async fn send_request(path: String, client: &reqwest::Client) -> anyhow::Res
         content: contents,
     };
 
-    let resp = client
-        .post("http://192.168.8.121:8333/predict")
-        .json(&req)
-        .send()
-        .await?;
+    // 设置 2 秒超时
+    let resp = tokio::time::timeout(
+        tokio::time::Duration::from_secs(2),
+        client
+            .post("http://192.168.8.121:8333/predict")
+            .json(&req)
+            .send(),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("request timed out"))??;
 
     let resp: Response = resp.json().await?;
     log::debug!("Response: {:?}", resp);

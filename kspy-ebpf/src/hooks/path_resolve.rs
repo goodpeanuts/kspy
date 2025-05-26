@@ -32,7 +32,9 @@ fn try_path_reso(ctx: &ProbeContext) -> Result<(), i64> {
         extract_path(dentry_ptr, &mut event.path);
     }
 
-    debug!(ctx, "Path: {}", unsafe { from_utf8_unchecked(&event.path) });
+    debug!(ctx, "Raw Path in Kernel: {}", unsafe {
+        from_utf8_unchecked(&event.path)
+    });
 
     #[allow(static_mut_refs)]
     unsafe {

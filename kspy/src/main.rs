@@ -77,7 +77,10 @@ async fn main() -> anyhow::Result<()> {
     for cpu_id in online_cpus().map_err(|(_, error)| error)? {
         // open a separate perf buffer for each cpu
         let mut buf = perf_array.open(cpu_id, None)?;
+
+        #[cfg(feature = "webshell-detect")]
         let client = client.clone();
+
         // process each perf buffer in a separate task
         #[allow(unreachable_code)]
         task::spawn(async move {
@@ -92,7 +95,6 @@ async fn main() -> anyhow::Result<()> {
                 // events.read contains the number of events that have been read,
                 // and is always <= buffers.len()
                 for buf in buffers.iter_mut().take(events.read) {
-                    // let buf = &mut buffers[i];
                     // process buf
                     let event = buf.as_ptr() as *const WriteEvent;
                     let t = unsafe { *event };
@@ -102,13 +104,13 @@ async fn main() -> anyhow::Result<()> {
                         continue;
                     }
 
+                    info!("events: {:?}", path);
+
                     // 2. 打开文件发送信息
                     #[cfg(feature = "webshell-detect")]
                     if let Err(e) = send_request(path.clone(), &client).await {
                         error!("Failed to send file: {}", e);
                     }
-
-                    info!("events: {:?}", path);
                 }
             }
 
