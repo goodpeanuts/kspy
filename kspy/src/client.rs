@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use tokio::{fs::File, io::AsyncReadExt};
 use uuid::Uuid;
 
+const GRADIO_SERVER_PREDICT_URL: &str = "http://192.168.8.121:8333/predict";
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Request {
     id: String,
@@ -36,10 +38,7 @@ pub async fn send_request(path: String, client: &reqwest::Client) -> anyhow::Res
     // 设置 2 秒超时
     let resp = tokio::time::timeout(
         tokio::time::Duration::from_secs(2),
-        client
-            .post("http://192.168.8.121:8333/predict")
-            .json(&req)
-            .send(),
+        client.post(GRADIO_SERVER_PREDICT_URL).json(&req).send(),
     )
     .await
     .map_err(|_| anyhow::anyhow!("request timed out"))??;

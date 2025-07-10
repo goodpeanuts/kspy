@@ -1,10 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-    "kspy",
-    "kspy-common",
-    "kspy-ebpf", "wbserver",
-]
+members = ["kspy", "kspy-common", "kspy-ebpf"]
 default-members = ["kspy", "kspy-common"]
 
 [workspace.package]

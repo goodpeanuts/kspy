@@ -1805,20 +1805,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wbserver"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "env_logger",
- "log",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "web-sys"
 version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"

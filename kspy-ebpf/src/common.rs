@@ -1,10 +1,7 @@
 pub use core::str::from_utf8_unchecked;
 
 pub use aya_ebpf::{
-    helpers::{
-        bpf_d_path, bpf_get_current_pid_tgid, bpf_probe_read_kernel,
-        bpf_probe_read_kernel_str_bytes,
-    },
+    helpers::{bpf_get_current_pid_tgid, bpf_probe_read_kernel, bpf_probe_read_kernel_str_bytes},
     macros::{kprobe, map},
     maps::{HashMap, LruHashMap, PerfEventArray, ProgramArray},
     programs::ProbeContext,

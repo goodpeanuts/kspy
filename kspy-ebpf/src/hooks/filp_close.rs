@@ -1,3 +1,4 @@
+#![allow(unused)]
 use aya_ebpf::{macros::fentry, programs::FEntryContext};
 use aya_log_ebpf::info;
 
@@ -41,7 +42,7 @@ fn try_ff(ctx: &FEntryContext) -> Result<(), i64> {
 
     // let file_ptr = file_addr as *const file;
     let file_val = unsafe { bpf_probe_read_kernel::<file>(file_ptr).map_err(|_| -8)? };
-    let mut path_ptr = file_val.f_path;
+    let path_ptr = file_val.f_path;
 
     unsafe {
         // failed
